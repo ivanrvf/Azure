@@ -1,0 +1,177 @@
+{
+  "properties": {
+    "displayName": "Deploy flow log for NSGs in certain regions",
+    "policyType": "Custom",
+    "mode": "All",
+    "metadata": {
+      "category": "Network",
+      "createdBy": "<ObjectID>",
+      "createdOn": "2022-02-09T17:44:43.4427309Z",
+      "updatedBy": "<ObjectID>",
+      "updatedOn": "2022-02-18T23:46:05.4661386Z"
+    },
+    "parameters": {
+      "nsgRegions": {
+        "type": "Array",
+        "metadata": {
+          "displayName": "NSG Region",
+          "description": "This Policy will review NSGs only in the selected region. You can create other assignments to include other regions.",
+          "strongType": "location"
+        }
+      },
+      "networkWatcherRG": {
+        "type": "String",
+        "metadata": {
+          "displayName": "Network Watcher Resource Group",
+          "description": "You need to pass the network watcher group as the deployment depends on the resource group of network watcher resources",
+          "strongType": "existingResourceGroups"
+        },
+        "defaultValue": "NetworkWatcherRG"
+      }
+    },
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.Network/networkSecurityGroups"
+          },
+          {
+            "field": "location",
+            "in": "[parameters('nsgRegions')]"
+          },
+          {
+            "count": {
+              "field": "Microsoft.Network/networkSecurityGroups/flowLogs[*]"
+            },
+            "equals": 0
+          }
+        ]
+      },
+      "then": {
+        "effect": "deployIfNotExists",
+        "details": {
+          "type": "Microsoft.Network/networkWatchers/flowLogs",
+          "resourceGroupName": "[if(empty(coalesce(field('Microsoft.Network/networkSecurityGroups/flowLogs[*].id'))),parameters('NetworkWatcherRG'),split(first(field('Microsoft.Network/networkSecurityGroups/flowLogs[*].id')), '/')[4])]",
+          "name": "[if(empty(coalesce(field('Microsoft.Network/networkSecurityGroups/flowLogs[*].id'))), 'null/null', concat(split(first(field('Microsoft.Network/networkSecurityGroups/flowLogs[*].id')), '/')[8], '/', split(first(field('Microsoft.Network/networkSecurityGroups/flowLogs[*].id')), '/')[10]))]",
+          "existenceCondition": {
+            "allOf": [
+              {
+                "field": "Microsoft.Network/networkWatchers/flowLogs/enabled",
+                "equals": "true"
+              },
+              {
+                "field": "Microsoft.Network/networkWatchers/flowLogs/storageId",
+                "equals": "storageId"
+              }
+            ]
+          },
+          "roleDefinitionIds": [
+            "/providers/microsoft.authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
+          ],
+          "deployment": {
+            "properties": {
+              "mode": "incremental",
+              "template": {
+                "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                "contentVersion": "1.0.0.0",
+                "parameters": {
+                  "flowlogName": {
+                    "type": "String"
+                  },
+                  "location": {
+                    "type": "String"
+                  },
+                  "targetResource": {
+                    "type": "string"
+                  },
+                  "networkwatcherName": {
+                    "type": "String",
+                    "metadata": {
+                      "displayName": "NetworkWatcher",
+                      "description": "Get networkwatcher from same resource group or subscription if not present create new one."
+                    }
+                  },
+                  "networkWatcherRG": {
+                    "type": "string"
+                  }
+                },
+                "variables": {
+                  "storageIds": {
+                    "centralus": "[resourceId('Storage', 'Microsoft.Storage/storageAccounts','adlsdemos')]",
+                    "eastus": "[resourceId('Storage', 'Microsoft.Storage/storageAccounts','sqlvamvzjc6tktwfcm')]",
+                    "westus": "[resourceId('cloud-shell-storage-westus', 'Microsoft.Storage/storageAccounts','cs410032000747d817a')]",
+                    "canadacentral": "[resourceId('Storage', 'Microsoft.Storage/storageAccounts','cadsademo')]"
+                  }
+                },
+                "resources": [
+                  {
+                    "type": "Microsoft.Resources/deployments",
+                    "name": "[concat('flowlogDeployment-', uniqueString(parameters('flowlogName')))]",
+                    "apiVersion": "2019-10-01",
+                    "resourceGroup": "[parameters('NetworkWatcherRG')]",
+                    "properties": {
+                      "mode": "incremental",
+                      "parameters": {},
+                      "template": {
+                        "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                        "contentVersion": "1.0.0.0",
+                        "parameters": {},
+                        "resources": [
+                          {
+                            "type": "Microsoft.Network/networkWatchers",
+                            "apiVersion": "2021-05-01",
+                            "name": "[parameters('networkwatcherName')]",
+                            "location": "[parameters('location')]"
+                          },
+                          {
+                            "type": "Microsoft.Network/networkWatchers/flowLogs",
+                            "name": "[concat(parameters('networkwatcherName'), '/', parameters('flowlogName'))]",
+                            "apiVersion": "2021-05-01",
+                            "location": "[parameters('location')]",
+                            "properties": {
+                              "targetResourceId": "[parameters('targetResource')]",
+                              "storageId": "[variables('storageIds')[toLower(parameters('location'))]]",
+                              "enabled": "true",
+                              "retentionPolicy": {
+                                "days": "45",
+                                "enabled": "true"
+                              }
+                            },
+                            "dependsOn": [
+                              "[ if(empty(resourceId(subscription().subscriptionId,parameters('NetworkWatcherRG'), 'Microsoft.Network/networkWatchers', parameters('networkwatcherName'))), parameters('networkwatcherName') , resourceId(subscription().subscriptionId,parameters('NetworkWatcherRG'), 'Microsoft.Network/networkWatchers', parameters('networkwatcherName'))) ]"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              "parameters": {
+                "flowlogName": {
+                  "value": "[if(empty(coalesce(field('Microsoft.Network/networkSecurityGroups/flowLogs'))), concat(field('name'), '-', resourceGroup().name, '-', 'flowlog'), split(first(field('Microsoft.Network/networkSecurityGroups/flowLogs[*].id')), '/')[10])]"
+                },
+                "location": {
+                  "value": "[toLower(field('location'))]"
+                },
+                "targetResource": {
+                  "value": "[concat(resourceGroup().id, '/providers/Microsoft.Network/networkSecurityGroups/', field('name'))]"
+                },
+                "networkwatcherName": {
+                  "value": "[concat('NetworkWatcher','_',toLower(field('location')))]"
+                },
+                "networkWatcherRG": {
+                  "value": "[parameters('networkWatcherRG')]"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "id": "/subscriptions/<subscriptionID>/providers/Microsoft.Authorization/policyDefinitions/473df288-8244-4bc3-bec1-60d386c610e2",
+  "type": "Microsoft.Authorization/policyDefinitions",
+  "name": "473df288-8244-4bc3-bec1-60d386c610e2"
+}
