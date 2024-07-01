@@ -1,0 +1,7 @@
+{
+    "arm":"https://management.azure.com/.default",
+    "eventhubs":"https://eventhubs.azure.net/.default",
+    "servicebus":"https://servicebus.azure.net/.default",
+    "aisearch":"https://search.azure.com/.default",
+    "eventgrid":"https://eventgrid.azure.net/.default"
+}
